@@ -5,7 +5,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"resource-lab/cgroup"
+	"concurrency-memory-lab/cgroup"
 )
 
 var errNotRoot = errors.New("not root, start it with sudo")

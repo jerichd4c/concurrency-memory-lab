@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"resource-lab/cgroup"
-	"resource-lab/workload"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/workload"
 )
 
 // Config describes one test run.

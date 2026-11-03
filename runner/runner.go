@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"resource-lab/cgroup"
-	"resource-lab/metrics"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/metrics"
 )
 
 // stopGrace is how long the worker has to stop after SIGTERM before it is

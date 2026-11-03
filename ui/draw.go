@@ -6,9 +6,9 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"resource-lab/cgroup"
-	"resource-lab/runner"
-	"resource-lab/workload"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/runner"
+	"concurrency-memory-lab/workload"
 )
 
 var (
@@ -53,7 +53,7 @@ func (a *App) draw() {
 		return
 	}
 
-	a.put(0, 0, width, styleBar, " resource-lab  -  concurrency and memory lab")
+	a.put(0, 0, width, styleBar, " concurrency-memory-lab  -  threads, CPU limits, virtual memory and swap")
 	if a.limitsErr == nil {
 		a.put(1, 1, width-1, styleOK, "limits: available (root, cgroup v2)")
 	} else {

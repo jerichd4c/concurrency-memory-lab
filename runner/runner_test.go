@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"resource-lab/cgroup"
-	"resource-lab/workload"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/workload"
 )
 
 var errTest = errors.New("test error")

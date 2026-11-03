@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"resource-lab/metrics"
+	"concurrency-memory-lab/metrics"
 )
 
 // DefaultParent groups every cgroup created by the application.
-var DefaultParent = filepath.Join(metrics.CgroupRoot, "resource-lab")
+var DefaultParent = filepath.Join(metrics.CgroupRoot, "concurrency-memory-lab")
 
 // Group is one cgroup directory, created for a single test run.
 type Group struct {

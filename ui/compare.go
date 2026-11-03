@@ -7,9 +7,9 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"resource-lab/cgroup"
-	"resource-lab/runner"
-	"resource-lab/workload"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/runner"
+	"concurrency-memory-lab/workload"
 )
 
 // view is what fills the screen between the title and the key bar.

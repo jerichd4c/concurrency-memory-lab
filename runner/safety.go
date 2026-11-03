@@ -3,7 +3,7 @@ package runner
 import (
 	"fmt"
 
-	"resource-lab/metrics"
+	"concurrency-memory-lab/metrics"
 )
 
 // MaxThreads is the most workers a test may start.

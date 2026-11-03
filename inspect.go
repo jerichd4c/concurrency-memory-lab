@@ -5,14 +5,14 @@ import (
 	"os"
 	"strconv"
 
-	"resource-lab/metrics"
+	"concurrency-memory-lab/metrics"
 )
 
 // runInspect prints the measurements of a running process, its cgroup and
 // the machine. It is a debugging aid; the TUI will show the same values.
 func runInspect(args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: resource-lab inspect <pid>")
+		fmt.Fprintln(os.Stderr, "usage: concurrency-memory-lab inspect <pid>")
 		return exitUsage
 	}
 	pid, err := strconv.Atoi(args[0])

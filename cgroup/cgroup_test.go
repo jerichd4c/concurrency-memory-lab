@@ -12,7 +12,7 @@ import (
 // writing a cgroup file that accepts any value.
 
 func TestNewCreatesParentAndGroup(t *testing.T) {
-	parent := filepath.Join(t.TempDir(), "resource-lab")
+	parent := filepath.Join(t.TempDir(), "concurrency-memory-lab")
 	g, err := New(parent, "run-1")
 	if err != nil {
 		t.Fatal(err)

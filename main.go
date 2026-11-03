@@ -1,21 +1,22 @@
-// Command resource-lab runs controlled concurrency and memory experiments.
-// Without arguments it opens the terminal interface. The other modes are:
-// run, which runs one test from the command line; worker, the test load
-// itself; and inspect, which prints the measurements of a running process.
+// Command concurrency-memory-lab runs controlled concurrency and memory
+// experiments. Without arguments it opens the terminal interface. The other
+// modes are: run, which runs one test from the command line; worker, the
+// test load itself; and inspect, which prints the measurements of a running
+// process.
 package main
 
 import (
 	"fmt"
 	"os"
 
-	"resource-lab/ui"
+	"concurrency-memory-lab/ui"
 )
 
 const usage = `usage:
-  resource-lab                  open the interface (run it with sudo to apply limits)
-  resource-lab run [flags]      run one test from the command line
-  resource-lab worker [flags]   run the test load (-h for its flags)
-  resource-lab inspect <pid>    print the measurements of a process`
+  concurrency-memory-lab                  open the interface (run it with sudo to apply limits)
+  concurrency-memory-lab run [flags]      run one test from the command line
+  concurrency-memory-lab worker [flags]   run the test load (-h for its flags)
+  concurrency-memory-lab inspect <pid>    print the measurements of a process`
 
 func main() {
 	if len(os.Args) == 1 {

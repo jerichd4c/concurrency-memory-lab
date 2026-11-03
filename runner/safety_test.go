@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"resource-lab/metrics"
+	"concurrency-memory-lab/metrics"
 )
 
 const mib = 1 << 20

@@ -6,9 +6,9 @@ import (
 	"syscall"
 	"time"
 
-	"resource-lab/cgroup"
-	"resource-lab/metrics"
-	"resource-lab/workload"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/metrics"
+	"concurrency-memory-lab/workload"
 )
 
 // Outcome is how a test run ended.

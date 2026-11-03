@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"resource-lab/cgroup"
-	"resource-lab/runner"
-	"resource-lab/workload"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/runner"
+	"concurrency-memory-lab/workload"
 )
 
 // runRun runs one complete test from the command line: it starts the worker

@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"resource-lab/workload"
+	"concurrency-memory-lab/workload"
 )
 
 // Exit codes of the program, shared with the runner.

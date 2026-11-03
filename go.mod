@@ -1,4 +1,4 @@
-module resource-lab
+module concurrency-memory-lab
 
 go 1.25.0
 

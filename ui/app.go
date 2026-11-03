@@ -11,9 +11,9 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"resource-lab/cgroup"
-	"resource-lab/metrics"
-	"resource-lab/runner"
+	"concurrency-memory-lab/cgroup"
+	"concurrency-memory-lab/metrics"
+	"concurrency-memory-lab/runner"
 )
 
 // sampleInterval is the time between two readings of the running test.

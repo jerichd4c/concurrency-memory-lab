@@ -65,7 +65,7 @@ func TestCleanOrphansWithoutParent(t *testing.T) {
 }
 
 func TestRemoveParentKeepsAParentWithGroups(t *testing.T) {
-	parent := filepath.Join(t.TempDir(), "resource-lab")
+	parent := filepath.Join(t.TempDir(), "concurrency-memory-lab")
 	if err := os.MkdirAll(filepath.Join(parent, "run-1-1"), 0o755); err != nil {
 		t.Fatal(err)
 	}

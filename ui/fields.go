@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"resource-lab/runner"
-	"resource-lab/workload"
+	"concurrency-memory-lab/runner"
+	"concurrency-memory-lab/workload"
 )
 
 // field is one setting of the configuration form. Every setting is stored

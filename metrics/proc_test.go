@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const sampleStatus = `Name:	resource-lab
+const sampleStatus = `Name:	concurrency-mem
 State:	S (sleeping)
 Pid:	2644
 VmPeak:	 1489740 kB
