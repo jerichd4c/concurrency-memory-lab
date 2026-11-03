@@ -35,6 +35,10 @@ type App struct {
 	hasSample bool
 	results   []runner.Result // every finished test, oldest first
 
+	view   view // main or compare
+	cmpSel int  // selected row of the compare table (index in results)
+	cmpTop int  // first row of the table on screen
+
 	limitsErr error          // why limits cannot be applied, nil if they can
 	system    metrics.System // RAM and swap of the machine
 	message   string         // result of the last action
@@ -181,13 +185,22 @@ func (a *App) takeSample() {
 // finish stores the result of the test that just ended.
 func (a *App) finish() {
 	res := a.run.Result()
-	a.results = append(a.results, res)
+	a.addResult(res)
 	a.run = nil
 	a.setMessage("test finished: " + string(res.Outcome))
 	if a.quitting {
 		return
 	}
 	a.system, _ = metrics.ReadSystem()
+}
+
+// addResult keeps a finished test. If the compare table had the newest test
+// selected, the selection moves to the new one.
+func (a *App) addResult(res runner.Result) {
+	a.results = append(a.results, res)
+	if a.cmpSel == len(a.results)-2 {
+		a.cmpSel++
+	}
 }
 
 // quit leaves at once when idle; with a test running it stops it first and

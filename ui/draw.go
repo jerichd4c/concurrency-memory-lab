@@ -21,9 +21,10 @@ var (
 	styleWarn   = tcell.StyleDefault.Foreground(tcell.ColorYellow)
 )
 
-// Layout: the form on the left, the live panel on the right, the help of
-// the selected field and the last result under both. Everything fits in
-// 80x24: the live panel ends at line 14 and the result at line 21.
+// Layout of the main view: the form on the left, the live panel on the
+// right, the help of the selected field and the last result under both.
+// Everything fits in 80x24: the live panel ends at line 14 and the result
+// at line 21. The compare view is laid out in compare.go.
 const (
 	leftX   = 1
 	leftW   = 37
@@ -45,9 +46,17 @@ func (a *App) draw() {
 		a.put(1, 1, width-1, styleBad, "limits NOT available: "+a.limitsErr.Error()+" - tests run without limits")
 	}
 
-	a.drawForm()
-	a.drawLive()
-	a.drawResult()
+	keys := " arrows move/change  Enter type  s start  x stop  r repeat  c compare  q quit"
+	if a.view == viewCompare {
+		a.drawCompare()
+		keys = " up/down select  r repeat selected  s start  x stop  c/Esc back  q quit"
+	} else {
+		a.drawForm()
+		a.drawLive()
+		if n := len(a.results); n > 0 {
+			a.drawResult(resultY, fmt.Sprintf("LAST RESULT  test %d: %s", n, describe(a.results[n-1].Config)), a.results[n-1])
+		}
+	}
 
 	if a.message != "" {
 		style := styleWarn
@@ -56,8 +65,7 @@ func (a *App) draw() {
 		}
 		a.put(1, height-2, width-1, style, a.message)
 	}
-	a.put(0, height-1, width, styleBar,
-		" arrows move/change  Enter type  s start  x stop  r repeat  d defaults  q quit")
+	a.put(0, height-1, width, styleBar, keys)
 	a.screen.Show()
 }
 
@@ -119,16 +127,19 @@ func (a *App) drawLive() {
 	}
 }
 
-// drawResult shows the last finished test.
-func (a *App) drawResult() {
+// drawResult shows one finished test in five lines from line y: the title,
+// how it ended, its CPU phase, memory and CPU use. It stops before the
+// message line.
+func (a *App) drawResult(y int, title string, res runner.Result) {
 	_, height := a.screen.Size()
-	y := resultY
-	if len(a.results) == 0 {
+	if y >= height-2 {
 		return
 	}
-	res := a.results[len(a.results)-1]
-	a.put(leftX, y, 79, styleTitle, fmt.Sprintf("LAST RESULT  test %d: %s", len(a.results), describe(res.Config)))
+	a.put(leftX, y, 79, styleTitle, title)
 	y++
+	if y >= height-2 {
+		return
+	}
 	outcomeStyle := styleOK
 	if res.Outcome != runner.OutcomeCompleted {
 		outcomeStyle = styleWarn
@@ -142,15 +153,11 @@ func (a *App) drawResult() {
 	a.put(leftX, y, 79, workStyle, work)
 	y++
 
-	swapPeak := res.PeakSwapBytes
-	if res.HasCgroup && res.Cgroup.SwapAvailable {
-		swapPeak = res.Cgroup.SwapPeakBytes
-	}
 	if y >= height-2 {
 		return
 	}
 	a.put(leftX, y, 79, styleNormal, fmt.Sprintf("peak RAM %s  peak swap %s  faults %d minor %d major",
-		mib(res.PeakResidentBytes), a.swapText(swapPeak), res.MinorFaults, res.MajorFaults))
+		mib(res.PeakResidentBytes), a.swapText(peakSwap(res)), res.MinorFaults, res.MajorFaults))
 	y++
 
 	if y >= height-2 {
@@ -166,6 +173,15 @@ func (a *App) drawResult() {
 	limitsText, style := limitsSummary(res.Limits)
 	a.put(leftX, y, len(text), styleNormal, text)
 	a.put(leftX+len(text), y, 79-len(text), style, limitsText)
+}
+
+// peakSwap is the highest swap use of a test: the cgroup counts it exactly,
+// sampling only sees it every half second.
+func peakSwap(res runner.Result) uint64 {
+	if res.HasCgroup && res.Cgroup.SwapAvailable {
+		return res.Cgroup.SwapPeakBytes
+	}
+	return res.PeakSwapBytes
 }
 
 // workText describes the CPU phase of a result. A shared counter that lost

@@ -20,9 +20,12 @@ func (a *App) handleEvent(ev tcell.Event) {
 	case *tcell.EventResize:
 		a.screen.Sync()
 	case *tcell.EventKey:
-		if a.editing {
+		switch {
+		case a.view == viewCompare:
+			a.compareKey(ev)
+		case a.editing:
 			a.editKey(ev)
-		} else {
+		default:
 			a.commandKey(ev)
 		}
 	}
@@ -62,6 +65,8 @@ func (a *App) commandKey(ev *tcell.EventKey) {
 		a.stopTest()
 	case 'r':
 		a.repeatTest()
+	case 'c':
+		a.openCompare()
 	case 'k':
 		a.sel = (a.sel + len(a.fields) - 1) % len(a.fields)
 	case 'j':
