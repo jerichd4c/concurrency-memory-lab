@@ -25,6 +25,34 @@ func TestWorkerArgs(t *testing.T) {
 	if got := validConfig().WorkerArgs(); !slices.Equal(got, want) {
 		t.Errorf("WorkerArgs = %v, want %v", got, want)
 	}
+	c := validConfig()
+	c.Sync = workload.SyncMutex
+	want = append(want, "-sync", "mutex")
+	if got := c.WorkerArgs(); !slices.Equal(got, want) {
+		t.Errorf("WorkerArgs with sync = %v, want %v", got, want)
+	}
+}
+
+func TestParseWork(t *testing.T) {
+	out := "pid=1 mode=goroutine threads=4\n" +
+		"cpu work: 2000000000 iterations in 1.272s (checksum 0e8291f3e00be6c0)\nresult: ok\n"
+	w := parseWork(out)
+	if !w.Reported || w.Shared || w.Done != 2_000_000_000 || w.Elapsed != 1272*time.Millisecond {
+		t.Errorf("cpu work: %+v", w)
+	}
+
+	out = "shared counter (none): 1234567 of 4000000 increments, lost 2765433 (69.1%) in 120ms\n"
+	w = parseWork(out)
+	if !w.Reported || !w.Shared || w.Counter != 1234567 || w.Done != 4_000_000 ||
+		w.Elapsed != 120*time.Millisecond || w.Lost() != 2765433 {
+		t.Errorf("shared counter: %+v, lost %d", w, w.Lost())
+	}
+
+	for _, bad := range []string{"", "result: stopped\n", "cpu work: many iterations in 1s\n"} {
+		if w := parseWork(bad); w.Reported {
+			t.Errorf("parseWork(%q) = %+v, want not reported", bad, w)
+		}
+	}
 }
 
 func TestValidate(t *testing.T) {
@@ -34,6 +62,7 @@ func TestValidate(t *testing.T) {
 	bad := []func(*Config){
 		func(c *Config) { c.Threads = 0 },
 		func(c *Config) { c.Mode = "fiber" },
+		func(c *Config) { c.Sync = "semaphore" },
 		func(c *Config) { c.MemoryMiB = -1 },
 		func(c *Config) { c.WorkMillions = -1 },
 		func(c *Config) { c.Limits.CPUPercent = -5 },

@@ -2,13 +2,13 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 
 	"resource-lab/cgroup"
 	"resource-lab/runner"
+	"resource-lab/workload"
 )
 
 var (
@@ -135,36 +135,62 @@ func (a *App) drawResult() {
 	}
 	a.put(leftX, y, 79, outcomeStyle, fmt.Sprintf("%s  (%v)", res.Outcome, res.Duration.Round(time.Millisecond)))
 	y++
+	if y >= height-2 {
+		return
+	}
+	work, workStyle := workText(res.Work)
+	a.put(leftX, y, 79, workStyle, work)
+	y++
+
 	swapPeak := res.PeakSwapBytes
 	if res.HasCgroup && res.Cgroup.SwapAvailable {
 		swapPeak = res.Cgroup.SwapPeakBytes
 	}
-	lines := []string{
-		fmt.Sprintf("peak RAM %s  peak swap %s  faults %d minor %d major",
-			mib(res.PeakResidentBytes), a.swapText(swapPeak), res.MinorFaults, res.MajorFaults),
-		fmt.Sprintf("cpu time %v user %v system  %s", res.UserTime.Round(time.Millisecond),
-			res.SystemTime.Round(time.Millisecond), cpuWorkLine(res.Output)),
-	}
-	for _, l := range lines {
-		if y >= height-2 {
-			return
-		}
-		a.put(leftX, y, 79, styleNormal, l)
-		y++
-	}
 	if y >= height-2 {
 		return
 	}
-	cgroupText := "no cgroup  "
+	a.put(leftX, y, 79, styleNormal, fmt.Sprintf("peak RAM %s  peak swap %s  faults %d minor %d major",
+		mib(res.PeakResidentBytes), a.swapText(swapPeak), res.MinorFaults, res.MajorFaults))
+	y++
+
+	if y >= height-2 {
+		return
+	}
+	text := fmt.Sprintf("cpu %v user %v sys  ", res.UserTime.Round(time.Millisecond), res.SystemTime.Round(time.Millisecond))
 	if res.HasCgroup {
 		c := res.Cgroup
-		cgroupText = fmt.Sprintf("throttled %d of %d periods (%v)  oom kills %d  ",
-			c.ThrottledPeriods, c.Periods, c.Throttled.Round(time.Millisecond), c.OOMKills)
+		text += fmt.Sprintf("throttled %d of %d  oom kills %d  ", c.ThrottledPeriods, c.Periods, c.OOMKills)
+	} else {
+		text += "no cgroup  "
 	}
 	limitsText, style := limitsSummary(res.Limits)
-	x := leftX + len(cgroupText)
-	a.put(leftX, y, len(cgroupText), styleNormal, cgroupText)
-	a.put(x, y, 80-x, style, limitsText)
+	a.put(leftX, y, len(text), styleNormal, text)
+	a.put(leftX+len(text), y, 79-len(text), style, limitsText)
+}
+
+// workText describes the CPU phase of a result. A shared counter that lost
+// updates is shown in red: that is the race condition.
+func workText(w runner.Work) (string, tcell.Style) {
+	switch {
+	case !w.Reported:
+		return "work: not finished", styleDim
+	case !w.Shared:
+		return fmt.Sprintf("work: %d iterations in %v", w.Done, w.Elapsed), styleNormal
+	}
+	lost := w.Lost()
+	text := fmt.Sprintf("shared counter: %d of %d increments, lost %d (%.1f%%) in %v",
+		w.Counter, w.Done, lost, percent(lost, w.Done), w.Elapsed)
+	if lost > 0 {
+		return text, styleBad
+	}
+	return text, styleOK
+}
+
+func percent(part, whole int64) float64 {
+	if whole == 0 {
+		return 0
+	}
+	return 100 * float64(part) / float64(whole)
 }
 
 // limitsSummary says in a few words whether the test was really limited.
@@ -174,7 +200,7 @@ func limitsSummary(limits []cgroup.LimitResult) (string, tcell.Style) {
 	}
 	for _, l := range limits {
 		if !l.Applied {
-			return "limits: NOT applied, the test was not limited", styleBad
+			return "limits: NOT applied", styleBad
 		}
 	}
 	return "limits: all applied", styleOK
@@ -228,20 +254,11 @@ func limitStyle(applied bool) tcell.Style {
 
 // describe summarizes a configuration in one line.
 func describe(c runner.Config) string {
-	return fmt.Sprintf("%d %s, %d MiB, %d M", c.Threads, c.Mode, c.MemoryMiB, c.WorkMillions)
-}
-
-// cpuWorkLine returns the worker's "cpu work: ..." line, if it printed one.
-func cpuWorkLine(output string) string {
-	for line := range strings.Lines(output) {
-		if rest, ok := strings.CutPrefix(line, "cpu work: "); ok {
-			if i := strings.Index(rest, " (checksum"); i >= 0 {
-				rest = rest[:i]
-			}
-			return "work: " + strings.TrimSpace(rest)
-		}
+	s := fmt.Sprintf("%d %s, %d MiB, %d M", c.Threads, c.Mode, c.MemoryMiB, c.WorkMillions)
+	if c.Sync != "" && c.Sync != workload.SyncOff {
+		s += ", counter " + string(c.Sync)
 	}
-	return ""
+	return s
 }
 
 func mib(b uint64) string {

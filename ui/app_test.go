@@ -10,6 +10,7 @@ import (
 
 	"resource-lab/cgroup"
 	"resource-lab/runner"
+	"resource-lab/workload"
 )
 
 // newTestApp builds an App that draws on an in-memory screen.
@@ -73,9 +74,24 @@ func TestArrowsChangeTheSelectedField(t *testing.T) {
 	if a.cfg.Mode != "os-thread" {
 		t.Errorf("Mode = %q after Right, want os-thread", a.cfg.Mode)
 	}
-	key(a, tcell.KeyEnter) // Enter toggles a choice
+	key(a, tcell.KeyEnter) // Enter moves to the next option, going round
 	if a.cfg.Mode != "goroutine" {
 		t.Errorf("Mode = %q after Enter, want goroutine", a.cfg.Mode)
+	}
+}
+
+func TestSharedCounterGoesThroughItsOptions(t *testing.T) {
+	a, _ := newTestApp(t, 80, 24)
+	f := selectField(t, a, "Shared counter")
+	for _, want := range []string{"no sync", "mutex", "atomic", "off"} {
+		key(a, tcell.KeyRight)
+		if got := f.format(f.get(&a.cfg)); got != want {
+			t.Errorf("after Right: %q, want %q", got, want)
+		}
+	}
+	key(a, tcell.KeyLeft)
+	if a.cfg.Sync != workload.SyncAtomic {
+		t.Errorf("Left from off: Sync = %q, want atomic", a.cfg.Sync)
 	}
 }
 
@@ -197,11 +213,29 @@ func TestDrawLastResult(t *testing.T) {
 		Outcome:  runner.OutcomeOOM,
 		Duration: 1500 * time.Millisecond,
 		Limits:   []cgroup.LimitResult{{Name: "memory", Requested: "128 MiB", Err: errNotRoot}},
-		Output:   "cpu work: 2000000000 iterations in 715ms (checksum 0e8291f3e00be6c0)\n",
+		Work:     runner.Work{Reported: true, Done: 2_000_000_000, Elapsed: 715 * time.Millisecond},
 	})
 	a.draw()
 	text := screenText(screen)
 	for _, want := range []string{"LAST RESULT", "out of memory", "1.5s", "work: 2000000000 iterations in 715ms", "limits: NOT applied"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("screen does not show %q", want)
+		}
+	}
+}
+
+func TestDrawSharedCounterResult(t *testing.T) {
+	a, screen := newTestApp(t, 80, 24)
+	cfg := defaultConfig()
+	cfg.Sync = workload.SyncNone
+	a.results = append(a.results, runner.Result{
+		Config:  cfg,
+		Outcome: runner.OutcomeCompleted,
+		Work:    runner.Work{Reported: true, Shared: true, Done: 4000, Counter: 3000, Elapsed: time.Millisecond},
+	})
+	a.draw()
+	text := screenText(screen)
+	for _, want := range []string{"counter none", "shared counter: 3000 of 4000 increments, lost 1000 (25.0%)"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("screen does not show %q", want)
 		}
@@ -225,12 +259,16 @@ func TestQuitWhenIdle(t *testing.T) {
 	}
 }
 
-func TestCPUWorkLine(t *testing.T) {
-	out := "pid=1 mode=goroutine\ncpu work: 10 iterations in 1ms (checksum 00ff)\nresult: ok\n"
-	if got := cpuWorkLine(out); got != "work: 10 iterations in 1ms" {
-		t.Errorf("cpuWorkLine = %q", got)
+func TestWorkText(t *testing.T) {
+	if s, _ := workText(runner.Work{}); s != "work: not finished" {
+		t.Errorf("workText of an unreported phase = %q", s)
 	}
-	if got := cpuWorkLine("result: ok\n"); got != "" {
-		t.Errorf("cpuWorkLine without the line = %q, want empty", got)
+	_, style := workText(runner.Work{Reported: true, Shared: true, Done: 10, Counter: 10})
+	if style != styleOK {
+		t.Error("an exact shared counter is not shown as OK")
+	}
+	_, style = workText(runner.Work{Reported: true, Shared: true, Done: 10, Counter: 7})
+	if style != styleBad {
+		t.Error("a shared counter that lost updates is not shown in red")
 	}
 }

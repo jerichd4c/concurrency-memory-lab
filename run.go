@@ -22,7 +22,8 @@ func runRun(args []string) int {
 	threads := fs.Int("threads", 4, "number of workers")
 	modeName := fs.String("mode", string(workload.Goroutines), "worker type: goroutine or os-thread")
 	memMiB := fs.Int("mem", 64, "memory the worker reserves and touches, in MiB")
-	work := fs.Int64("work", 2000, "CPU work, in millions of iterations")
+	work := fs.Int64("work", 2000, "CPU work, in millions of iterations or increments")
+	syncName := fs.String("sync", string(workload.SyncOff), "shared counter: off, none, mutex or atomic")
 	cpu := fs.Int("cpu", 0, "CPU limit, in percent of one CPU (0 = no limit, 200 = two CPUs)")
 	memLimit := fs.Int64("mem-limit", 0, "memory limit, in MiB (0 = no limit)")
 	swapLimit := fs.Int64("swap-limit", -1, "swap limit, in MiB (-1 = no limit, 0 = no swap)")
@@ -45,6 +46,7 @@ func runRun(args []string) int {
 		Mode:         workload.ThreadMode(*modeName),
 		MemoryMiB:    *memMiB,
 		WorkMillions: *work,
+		Sync:         workload.SyncMode(*syncName),
 		Limits: cgroup.Limits{
 			CPUPercent:  *cpu,
 			MemoryBytes: *memLimit << 20,

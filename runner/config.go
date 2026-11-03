@@ -16,8 +16,9 @@ import (
 type Config struct {
 	Threads      int
 	Mode         workload.ThreadMode
-	MemoryMiB    int   // memory the worker reserves and touches
-	WorkMillions int64 // CPU work, in millions of iterations
+	MemoryMiB    int               // memory the worker reserves and touches
+	WorkMillions int64             // CPU work, in millions of iterations or increments
+	Sync         workload.SyncMode // shared counter mode; "" is off
 	Limits       cgroup.Limits
 	Timeout      time.Duration // 0: no timeout
 }
@@ -28,6 +29,9 @@ func (c Config) Validate() error {
 		return errors.New("threads must be at least 1")
 	}
 	if _, err := workload.ParseThreadMode(string(c.Mode)); err != nil {
+		return err
+	}
+	if _, err := workload.ParseSyncMode(string(c.Sync)); err != nil {
 		return err
 	}
 	if c.MemoryMiB < 0 || c.WorkMillions < 0 {
@@ -44,10 +48,14 @@ func (c Config) Validate() error {
 
 // WorkerArgs returns the flags that make the worker run this test.
 func (c Config) WorkerArgs() []string {
-	return []string{
+	args := []string{
 		"-threads", strconv.Itoa(c.Threads),
 		"-mode", string(c.Mode),
 		"-mem", strconv.Itoa(c.MemoryMiB),
 		"-work", strconv.FormatInt(c.WorkMillions, 10),
 	}
+	if c.Sync != "" && c.Sync != workload.SyncOff {
+		args = append(args, "-sync", string(c.Sync))
+	}
+	return args
 }

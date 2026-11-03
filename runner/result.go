@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,8 +46,62 @@ type Result struct {
 	// precise when HasCgroup is true.
 	PeakSwapBytes uint64
 
+	Work       Work   // what the worker reported about its CPU phase
 	Output     string // what the worker printed
 	CleanupErr error  // the cgroup could not be removed
+}
+
+// Work is the CPU phase as reported by the worker.
+type Work struct {
+	Reported bool          // the worker printed its CPU line
+	Shared   bool          // shared counter test instead of independent work
+	Done     int64         // iterations or increments done
+	Counter  int64         // final value of the shared counter
+	Elapsed  time.Duration // time of the CPU phase alone, without the memory phase
+}
+
+// Lost returns how many counter updates were lost.
+func (w Work) Lost() int64 {
+	if !w.Shared {
+		return 0
+	}
+	return w.Done - w.Counter
+}
+
+// parseWork reads the CPU line of the worker output, one of:
+//
+//	cpu work: N iterations in T (checksum X)
+//	shared counter (MODE): C of N increments, lost L (P%) in T
+func parseWork(output string) Work {
+	for line := range strings.Lines(output) {
+		f := strings.Fields(line)
+		var w Work
+		var done, counter, elapsed string
+		switch {
+		case len(f) >= 6 && f[0] == "cpu" && f[1] == "work:":
+			done, elapsed = f[2], f[5]
+		case len(f) >= 12 && f[0] == "shared" && f[1] == "counter":
+			w.Shared = true
+			counter, done, elapsed = f[3], f[5], f[11]
+		default:
+			continue
+		}
+		var err error
+		if w.Done, err = strconv.ParseInt(done, 10, 64); err != nil {
+			return Work{}
+		}
+		if w.Shared {
+			if w.Counter, err = strconv.ParseInt(counter, 10, 64); err != nil {
+				return Work{}
+			}
+		}
+		if w.Elapsed, err = time.ParseDuration(elapsed); err != nil {
+			return Work{}
+		}
+		w.Reported = true
+		return w
+	}
+	return Work{}
 }
 
 // stopReason records why the runner itself stopped the worker.

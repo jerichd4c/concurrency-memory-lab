@@ -23,18 +23,25 @@ const (
 )
 
 // runWorker is the test load: it reserves and touches memory, then runs CPU
-// work across several workers. SIGTERM or SIGINT stops it cleanly.
+// work across several workers: independent work, or increments of one shared
+// counter. SIGTERM or SIGINT stops it cleanly.
 func runWorker(args []string) int {
 	fs := flag.NewFlagSet("worker", flag.ContinueOnError)
 	threads := fs.Int("threads", 4, "number of workers")
 	modeName := fs.String("mode", string(workload.Goroutines), "worker type: goroutine or os-thread")
 	memMiB := fs.Int("mem", 64, "memory to reserve and touch, in MiB (0 = none)")
-	work := fs.Int64("work", 2000, "CPU work, in millions of iterations (0 = none)")
+	work := fs.Int64("work", 2000, "CPU work, in millions of iterations or increments (0 = none)")
+	syncName := fs.String("sync", string(workload.SyncOff), "shared counter: off, none, mutex or atomic")
 	pause := fs.Duration("pause", 0, "pause after each memory phase, to inspect /proc/<pid>")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	mode, err := workload.ParseThreadMode(*modeName)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return exitUsage
+	}
+	syncMode, err := workload.ParseSyncMode(*syncName)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return exitUsage
@@ -75,9 +82,16 @@ func runWorker(args []string) int {
 
 	if *work > 0 && !stop.Load() {
 		t := time.Now()
-		done, sum := workload.RunCPU(*work*1_000_000, *threads, mode, &stop)
-		fmt.Printf("cpu work: %d iterations in %v (checksum %016x)\n",
-			done, time.Since(t).Round(time.Millisecond), sum)
+		if syncMode == workload.SyncOff {
+			done, sum := workload.RunCPU(*work*1_000_000, *threads, mode, &stop)
+			fmt.Printf("cpu work: %d iterations in %v (checksum %016x)\n",
+				done, time.Since(t).Round(time.Millisecond), sum)
+		} else {
+			done, counter := workload.RunCounter(*work*1_000_000, *threads, mode, syncMode, &stop)
+			lost := done - counter
+			fmt.Printf("shared counter (%s): %d of %d increments, lost %d (%.1f%%) in %v\n",
+				syncMode, counter, done, lost, percent(lost, done), time.Since(t).Round(time.Millisecond))
+		}
 	}
 
 	fmt.Printf("total %v\n", time.Since(start).Round(time.Millisecond))
@@ -87,6 +101,14 @@ func runWorker(args []string) int {
 	}
 	fmt.Println("result: ok")
 	return exitOK
+}
+
+// percent returns part/whole as a percentage, 0 when whole is 0.
+func percent(part, whole int64) float64 {
+	if whole == 0 {
+		return 0
+	}
+	return 100 * float64(part) / float64(whole)
 }
 
 // wait sleeps for d, or less if the worker is asked to stop.

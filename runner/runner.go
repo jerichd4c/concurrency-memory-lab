@@ -197,6 +197,7 @@ func (r *Run) wait() {
 		Output:        r.output.String(),
 		ExitCode:      -1,
 	}
+	res.Work = parseWork(res.Output)
 	if st := r.cmd.ProcessState; st != nil {
 		res.ExitCode = st.ExitCode()
 		if ws, ok := st.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
