@@ -64,6 +64,15 @@ func runRun(args []string) int {
 		fmt.Fprintln(os.Stderr, "cannot find this program:", err)
 		return exitError
 	}
+	if os.Geteuid() == 0 {
+		// Only root can create (and remove) cgroups.
+		if n, err := cgroup.CleanOrphans(cgroup.DefaultParent); err != nil {
+			fmt.Fprintln(os.Stderr, "could not remove old cgroups:", err)
+		} else if n > 0 {
+			fmt.Printf("removed %d cgroup(s) left by an earlier run\n", n)
+		}
+		defer cgroup.RemoveParent(cgroup.DefaultParent)
+	}
 	r, err := runner.Start(exe, cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "start:", err)

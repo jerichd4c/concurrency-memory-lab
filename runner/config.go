@@ -5,6 +5,7 @@ package runner
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -25,8 +26,8 @@ type Config struct {
 
 // Validate checks the values before anything is started.
 func (c Config) Validate() error {
-	if c.Threads < 1 {
-		return errors.New("threads must be at least 1")
+	if c.Threads < 1 || c.Threads > MaxThreads {
+		return fmt.Errorf("threads must be between 1 and %d", MaxThreads)
 	}
 	if _, err := workload.ParseThreadMode(string(c.Mode)); err != nil {
 		return err

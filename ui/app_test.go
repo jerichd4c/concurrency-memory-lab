@@ -251,6 +251,29 @@ func TestDrawOnTinyScreens(t *testing.T) {
 	}
 }
 
+func TestSmallTerminalAsksToResize(t *testing.T) {
+	a, screen := newTestApp(t, 70, 20)
+	a.draw()
+	text := screenText(screen)
+	if !strings.Contains(text, "terminal too small") || !strings.Contains(text, "70x20, needs 80x24") {
+		t.Errorf("small terminal screen:\n%s", text)
+	}
+	if strings.Contains(text, "CONFIGURATION") {
+		t.Error("the form is drawn on a terminal that is too small")
+	}
+}
+
+func TestIdlePanelShowsTheSafeMemory(t *testing.T) {
+	a, screen := newTestApp(t, 80, 24)
+	a.system.MemTotalBytes = 8000 << 20
+	a.system.MemAvailableBytes = 4000 << 20
+	a.system.SwapFreeBytes = 2000 << 20
+	a.draw()
+	if !strings.Contains(screenText(screen), "safe now: 2000 MiB RAM, 1000 MiB swap") {
+		t.Error("the idle panel does not show the safe maximum")
+	}
+}
+
 func TestQuitWhenIdle(t *testing.T) {
 	a, _ := newTestApp(t, 80, 24)
 	typeText(a, "q")

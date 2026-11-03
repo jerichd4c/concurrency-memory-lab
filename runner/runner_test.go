@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"slices"
 	"syscall"
 	"testing"
@@ -9,6 +10,8 @@ import (
 	"resource-lab/cgroup"
 	"resource-lab/workload"
 )
+
+var errTest = errors.New("test error")
 
 func validConfig() Config {
 	return Config{
@@ -61,6 +64,7 @@ func TestValidate(t *testing.T) {
 	}
 	bad := []func(*Config){
 		func(c *Config) { c.Threads = 0 },
+		func(c *Config) { c.Threads = MaxThreads + 1 },
 		func(c *Config) { c.Mode = "fiber" },
 		func(c *Config) { c.Sync = "semaphore" },
 		func(c *Config) { c.MemoryMiB = -1 },

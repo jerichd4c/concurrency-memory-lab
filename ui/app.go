@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -72,7 +73,22 @@ func newApp(screen tcell.Screen, exe string) *App {
 	}
 	a.limitsErr = limitsAvailable()
 	a.system, _ = metrics.ReadSystem()
+	if a.limitsErr == nil {
+		a.cleanOrphans()
+	}
 	return a
+}
+
+// cleanOrphans removes the cgroups left by an earlier run of the program
+// that was killed before it could clean up.
+func (a *App) cleanOrphans() {
+	n, err := cgroup.CleanOrphans(cgroup.DefaultParent)
+	switch {
+	case err != nil:
+		a.setError("could not remove old cgroups: " + err.Error())
+	case n > 0:
+		a.setMessage(fmt.Sprintf("removed %d cgroup(s) left by an earlier run", n))
+	}
 }
 
 // limitsAvailable tells, before any test, whether limits can be applied:
@@ -95,6 +111,9 @@ func (a *App) loop() {
 	defer func() {
 		p := recover()
 		a.screen.Fini()
+		if a.limitsErr == nil {
+			cgroup.RemoveParent(cgroup.DefaultParent)
+		}
 		if p != nil {
 			panic(p)
 		}
@@ -172,9 +191,13 @@ func (a *App) stopTest() {
 }
 
 // takeSample reads the running test. A failed reading keeps the last one:
-// it happens when the worker has just exited.
+// it happens when the worker has just exited. While idle it reads the
+// machine's memory instead, for the safe maximum shown in the live panel.
 func (a *App) takeSample() {
 	if a.run == nil {
+		if sys, err := metrics.ReadSystem(); err == nil {
+			a.system = sys
+		}
 		return
 	}
 	if s, err := a.run.Sample(); err == nil {

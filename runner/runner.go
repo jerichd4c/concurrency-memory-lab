@@ -50,7 +50,8 @@ type Run struct {
 // Start creates the cgroup, applies the limits and starts exe (this same
 // program) in worker mode directly inside the cgroup. If the cgroup cannot
 // be created the test still runs, but every limit is reported as not
-// applied.
+// applied. A test that could take too much of the machine's memory, with
+// the limits that really apply, is refused before it starts.
 func Start(exe string, cfg Config) (*Run, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -65,6 +66,17 @@ func Start(exe string, cfg Config) (*Run, error) {
 		r.limits = cfg.Limits.NotApplied(r.groupErr)
 	}
 
+	sys, err := metrics.ReadSystem()
+	if err != nil {
+		r.removeGroup()
+		return nil, fmt.Errorf("cannot check the free memory: %w", err)
+	}
+	memLimit, swapLimit := r.limitsInForce()
+	if err := checkMemory(int64(cfg.MemoryMiB)<<20, memLimit, swapLimit, sys); err != nil {
+		r.removeGroup()
+		return nil, err
+	}
+
 	cmd := exec.Command(exe, append([]string{"worker"}, cfg.WorkerArgs()...)...)
 	cmd.Stdout = &r.output
 	cmd.Stderr = &r.output
@@ -75,7 +87,7 @@ func Start(exe string, cfg Config) (*Run, error) {
 	if r.group != nil {
 		dir, err := r.group.Open()
 		if err != nil {
-			r.group.Remove()
+			r.removeGroup()
 			return nil, err
 		}
 		defer dir.Close()
@@ -87,9 +99,7 @@ func Start(exe string, cfg Config) (*Run, error) {
 
 	r.start = time.Now()
 	if err := cmd.Start(); err != nil {
-		if r.group != nil {
-			r.group.Remove()
-		}
+		r.removeGroup()
 		return nil, err
 	}
 	r.cmd = cmd
@@ -105,6 +115,31 @@ func newGroup(name string) (*cgroup.Group, error) {
 		return nil, err
 	}
 	return cgroup.New(cgroup.DefaultParent, name)
+}
+
+// removeGroup deletes the cgroup of a run that could not start.
+func (r *Run) removeGroup() {
+	if r.group != nil {
+		r.group.Remove()
+	}
+}
+
+// limitsInForce returns the memory and swap limits that were really
+// applied: 0 and -1 for the ones that were not.
+func (r *Run) limitsInForce() (memLimit, swapLimit int64) {
+	memLimit, swapLimit = 0, -1
+	for _, l := range r.limits {
+		if !l.Applied {
+			continue
+		}
+		switch l.Name {
+		case "memory":
+			memLimit = r.cfg.Limits.MemoryBytes
+		case "swap":
+			swapLimit = r.cfg.Limits.SwapBytes
+		}
+	}
+	return memLimit, swapLimit
 }
 
 // Pid returns the process ID of the worker.

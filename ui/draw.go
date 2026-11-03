@@ -35,9 +35,23 @@ const (
 	resultY = 17
 )
 
+// minWidth and minHeight are the smallest terminal the layout fits in.
+const (
+	minWidth  = 80
+	minHeight = 24
+)
+
 func (a *App) draw() {
 	a.screen.Clear()
 	width, height := a.screen.Size()
+	if width < minWidth || height < minHeight {
+		// Drawing the screens cut would hide values and mix columns.
+		a.put(0, 0, width, styleBad, "terminal too small")
+		a.put(0, 1, width, styleNormal, fmt.Sprintf("%dx%d, needs %dx%d", width, height, minWidth, minHeight))
+		a.put(0, 2, width, styleDim, "q quits")
+		a.screen.Show()
+		return
+	}
 
 	a.put(0, 0, width, styleBar, " resource-lab  -  concurrency and memory lab")
 	if a.limitsErr == nil {
@@ -94,6 +108,10 @@ func (a *App) drawLive() {
 	y++
 	if a.run == nil {
 		a.put(rightX, y, rightW, styleDim, "idle - press s to start a test")
+		if a.system.MemTotalBytes != 0 {
+			ram, swap := runner.SafeMemory(a.system)
+			a.put(rightX, y+1, rightW, styleDim, fmt.Sprintf("safe now: %d MiB RAM, %d MiB swap", ram>>20, swap>>20))
+		}
 		return
 	}
 	a.put(rightX, y, rightW, styleWarn, fmt.Sprintf("running %.1fs  worker pid %d", a.sample.Elapsed.Seconds(), a.run.Pid()))

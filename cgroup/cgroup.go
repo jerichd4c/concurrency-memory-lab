@@ -67,9 +67,17 @@ func (g *Group) Open() (*os.File, error) {
 	return os.Open(g.Dir)
 }
 
-// Kill sends SIGKILL to every process in the group at once.
+// Kill sends SIGKILL to every process in the group at once. The file is
+// opened without O_CREATE: a directory that is not a cgroup gets no stray
+// file.
 func (g *Group) Kill() error {
-	return os.WriteFile(filepath.Join(g.Dir, "cgroup.kill"), []byte("1"), 0o644)
+	f, err := os.OpenFile(filepath.Join(g.Dir, "cgroup.kill"), os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString("1")
+	return err
 }
 
 // Remove deletes the group. The kernel refuses (EBUSY) while it still has
