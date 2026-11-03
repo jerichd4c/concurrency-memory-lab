@@ -14,12 +14,12 @@ import (
 	"resource-lab/workload"
 )
 
-// Exit codes of the worker, read later by the controller.
+// Exit codes of the program, shared with the runner.
 const (
-	exitOK      = 0
-	exitError   = 1
-	exitUsage   = 2
-	exitStopped = 3
+	exitOK      = workload.ExitOK
+	exitError   = workload.ExitError
+	exitUsage   = workload.ExitUsage
+	exitStopped = workload.ExitStopped
 )
 
 // runWorker is the test load: it reserves and touches memory, then runs CPU
