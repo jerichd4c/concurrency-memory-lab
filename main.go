@@ -1,5 +1,6 @@
 // Command resource-lab runs controlled concurrency and memory experiments.
-// For now it only has the worker mode, which is the test load itself.
+// For now it has two modes: worker, the test load itself, and inspect, which
+// prints the measurements of a running process.
 package main
 
 import (
@@ -7,10 +8,19 @@ import (
 	"os"
 )
 
+const usage = `usage:
+  resource-lab worker [flags]   run the test load (-h for its flags)
+  resource-lab inspect <pid>    print the measurements of a process`
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "worker" {
-		os.Exit(runWorker(os.Args[2:]))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "worker":
+			os.Exit(runWorker(os.Args[2:]))
+		case "inspect":
+			os.Exit(runInspect(os.Args[2:]))
+		}
 	}
-	fmt.Fprintln(os.Stderr, "usage: resource-lab worker [flags]  (resource-lab worker -h for help)")
+	fmt.Fprintln(os.Stderr, usage)
 	os.Exit(exitUsage)
 }
