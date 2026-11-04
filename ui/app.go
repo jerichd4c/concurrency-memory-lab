@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -40,6 +41,9 @@ type App struct {
 	cmpSel int  // selected row of the compare table (index in results)
 	cmpTop int  // first row of the table on screen
 
+	lang Lang  // language of the screen
+	t    *text // texts of that language
+
 	limitsErr error          // why limits cannot be applied, nil if they can
 	system    metrics.System // RAM and swap of the machine
 	message   string         // result of the last action
@@ -49,8 +53,9 @@ type App struct {
 }
 
 // Run starts the interface and returns when the user quits. exe is the path
-// of this program, used to start the worker.
-func Run(exe string) error {
+// of this program, used to start the worker; lang is the first language of
+// the screen (the l key changes it).
+func Run(exe string, lang Lang) error {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return err
@@ -58,19 +63,19 @@ func Run(exe string) error {
 	if err := screen.Init(); err != nil {
 		return err
 	}
-	a := newApp(screen, exe)
+	a := newApp(screen, exe, lang)
 	a.loop()
 	return nil
 }
 
-func newApp(screen tcell.Screen, exe string) *App {
+func newApp(screen tcell.Screen, exe string, lang Lang) *App {
 	a := &App{
 		screen: screen,
 		exe:    exe,
 		cfg:    defaultConfig(),
-		fields: newFields(),
 		start:  func(c runner.Config) (*runner.Run, error) { return runner.Start(exe, c) },
 	}
+	a.setLang(lang)
 	a.limitsErr = limitsAvailable()
 	a.system, _ = metrics.ReadSystem()
 	if a.limitsErr == nil {
@@ -85,9 +90,9 @@ func (a *App) cleanOrphans() {
 	n, err := cgroup.CleanOrphans(cgroup.DefaultParent)
 	switch {
 	case err != nil:
-		a.setError("could not remove old cgroups: " + err.Error())
+		a.setError(a.t.orphansErr + err.Error())
 	case n > 0:
-		a.setMessage(fmt.Sprintf("removed %d cgroup(s) left by an earlier run", n))
+		a.setMessage(fmt.Sprintf(a.t.orphansF, n))
 	}
 }
 
@@ -158,23 +163,28 @@ func (a *App) loop() {
 // startTest starts a test with the current configuration.
 func (a *App) startTest() {
 	if a.run != nil {
-		a.setError("a test is already running")
+		a.setError(a.t.alreadyRunning)
 		return
 	}
 	r, err := a.start(a.cfg)
-	if err != nil {
-		a.setError("cannot start: " + err.Error())
+	var unsafe *runner.UnsafeError
+	switch {
+	case errors.As(err, &unsafe):
+		a.setError(a.t.unsafeText(unsafe)) // says why on its own, in the language of the screen
+		return
+	case err != nil:
+		a.setError(a.t.cannotStart + err.Error())
 		return
 	}
 	a.run, a.hasSample = r, false
-	a.setMessage("test started")
+	a.setMessage(a.t.started)
 	a.takeSample()
 }
 
 // repeatTest starts again the configuration of the last finished test.
 func (a *App) repeatTest() {
 	if len(a.results) == 0 {
-		a.setError("no test has finished yet")
+		a.setError(a.t.noFinished)
 		return
 	}
 	a.cfg = a.results[len(a.results)-1].Config
@@ -183,11 +193,11 @@ func (a *App) repeatTest() {
 
 func (a *App) stopTest() {
 	if a.run == nil {
-		a.setError("no test is running")
+		a.setError(a.t.notRunning)
 		return
 	}
 	a.run.Stop()
-	a.setMessage("stopping the test...")
+	a.setMessage(a.t.stopping)
 }
 
 // takeSample reads the running test. A failed reading keeps the last one:
@@ -210,7 +220,7 @@ func (a *App) finish() {
 	res := a.run.Result()
 	a.addResult(res)
 	a.run = nil
-	a.setMessage("test finished: " + string(res.Outcome))
+	a.setMessage(fmt.Sprintf(a.t.finishedF, a.t.outcomes[res.Outcome]))
 	if a.quitting {
 		return
 	}
@@ -232,8 +242,25 @@ func (a *App) quit() {
 	a.quitting = true
 	if a.run != nil {
 		a.run.Stop()
-		a.setMessage("stopping the test before quitting...")
+		a.setMessage(a.t.stoppingQuit)
 	}
+}
+
+// setLang changes the language of the screen. The form is built again
+// because its labels, help texts and values are in that language too.
+func (a *App) setLang(l Lang) {
+	a.lang, a.t = l, texts(l)
+	a.fields = newFields(a.t)
+}
+
+// toggleLang switches between English and Spanish.
+func (a *App) toggleLang() {
+	if a.lang == English {
+		a.setLang(Spanish)
+	} else {
+		a.setLang(English)
+	}
+	a.setMessage(a.t.langChanged)
 }
 
 func (a *App) setMessage(m string) { a.message, a.msgIsErr = m, false }

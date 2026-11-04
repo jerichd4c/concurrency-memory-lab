@@ -37,10 +37,26 @@ func checkMemory(memBytes, memLimit, swapLimit int64, sys metrics.System) error 
 	}
 	safeRAM, safeSwap := SafeMemory(sys)
 	if uint64(ram) > safeRAM {
-		return fmt.Errorf("unsafe: %d MiB in RAM, safe max %d MiB (half of available RAM)", ram>>20, safeRAM>>20)
+		return &UnsafeError{MiB: uint64(ram) >> 20, MaxMiB: safeRAM >> 20}
 	}
 	if uint64(toSwap) > safeSwap {
-		return fmt.Errorf("unsafe: %d MiB to swap, safe max %d MiB (half of free swap)", toSwap>>20, safeSwap>>20)
+		return &UnsafeError{Swap: true, MiB: uint64(toSwap) >> 20, MaxMiB: safeSwap >> 20}
 	}
 	return nil
+}
+
+// UnsafeError is why a test was refused: it would put more memory in RAM,
+// or in swap, than is safe. Its fields let the interface explain it in its
+// own language.
+type UnsafeError struct {
+	Swap   bool   // the problem is swap, not RAM
+	MiB    uint64 // what the test would use
+	MaxMiB uint64 // the safe maximum
+}
+
+func (e *UnsafeError) Error() string {
+	if e.Swap {
+		return fmt.Sprintf("unsafe: %d MiB to swap, safe max %d MiB (half of free swap)", e.MiB, e.MaxMiB)
+	}
+	return fmt.Sprintf("unsafe: %d MiB in RAM, safe max %d MiB (half of available RAM)", e.MiB, e.MaxMiB)
 }

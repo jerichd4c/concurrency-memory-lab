@@ -35,17 +35,17 @@ func TestCompareRowLinesUpWithTheHeader(t *testing.T) {
 	res.MajorFaults = 123456
 	res.Work = runner.Work{Reported: true, Shared: true, Done: 1000, Counter: 1000}
 
-	row := compareRow(12, res)
+	row := compareRow(12, res, &english)
 	want := fmt.Sprintf("%2d %2d %-3s %-6s %4d %5d %-11s %-8s %6s %4d %4d %5s %5s",
 		12, 16, "os", "mutex", 256, 2000, "c50 m128 s0", "ok", "13.4s", 259, 0, "123k", "0.0%")
 	if row != want {
 		t.Errorf("row\n got %q\nwant %q", row, want)
 	}
-	if len(row) != len(tableHeader) {
-		t.Errorf("row is %d cells, header %d: columns do not line up", len(row), len(tableHeader))
+	if len(row) != len(english.tableHeader) {
+		t.Errorf("row is %d cells, header %d: columns do not line up", len(row), len(english.tableHeader))
 	}
-	if len(tableHeader) > 78 {
-		t.Errorf("header is %d cells, does not fit in 80 columns", len(tableHeader))
+	if len(english.tableHeader) > 78 {
+		t.Errorf("header is %d cells, does not fit in 80 columns", len(english.tableHeader))
 	}
 }
 
@@ -68,11 +68,11 @@ func TestLimitsShort(t *testing.T) {
 
 func TestOutcomeShortMarksUnlimitedTests(t *testing.T) {
 	res := runner.Result{Outcome: runner.OutcomeOOM}
-	if got := outcomeShort(res); got != "OOM" {
+	if got := outcomeShort(res, &english); got != "OOM" {
 		t.Errorf("outcomeShort = %q, want OOM", got)
 	}
 	res = runner.Result{Outcome: runner.OutcomeCompleted, Limits: []cgroup.LimitResult{{Name: "cpu", Applied: false}}}
-	if got := outcomeShort(res); got != "ok*" {
+	if got := outcomeShort(res, &english); got != "ok*" {
 		t.Errorf("outcomeShort with a limit not applied = %q, want ok*", got)
 	}
 }

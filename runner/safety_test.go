@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -54,6 +55,18 @@ func TestCheckMemory(t *testing.T) {
 		case tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr):
 			t.Errorf("%s: error %q, want it to contain %q", tt.name, err, tt.wantErr)
 		}
+	}
+}
+
+func TestUnsafeErrorFields(t *testing.T) {
+	var ue *UnsafeError
+	err := checkMemory(2500*mib, 1000*mib, -1, machine)
+	if !errors.As(err, &ue) || !ue.Swap || ue.MiB != 1500 || ue.MaxMiB != 1000 {
+		t.Errorf("swap refusal = %#v", err)
+	}
+	err = checkMemory(3000*mib, 0, -1, machine)
+	if !errors.As(err, &ue) || ue.Swap || ue.MiB != 3000 || ue.MaxMiB != 2000 {
+		t.Errorf("RAM refusal = %#v", err)
 	}
 }
 

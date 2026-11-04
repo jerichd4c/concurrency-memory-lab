@@ -28,14 +28,12 @@ const (
 )
 
 // The table columns. Each row is formatted with rowFormat and the header
-// uses the same widths, so the columns line up. It is 77 cells wide.
+// (text.tableHeader) uses the same widths, so the columns line up. It is 77
+// cells wide.
 const (
 	headerFormat = "%2s %-6s %-6s %4s %5s %-11s %-8s %6s %4s %4s %5s %5s"
 	rowFormat    = "%2d %2d %-3s %-6s %4d %5d %-11s %-8s %6s %4d %4d %5s %5s"
 )
-
-var tableHeader = fmt.Sprintf(headerFormat,
-	"#", "thread", "sync", "mem", "work", "limits", "result", "time", "RAM", "swap", "majfl", "lost")
 
 func (a *App) openCompare() {
 	a.view = viewCompare
@@ -47,11 +45,12 @@ func (a *App) openCompare() {
 // drawCompare draws the table and the detail of the selected test.
 func (a *App) drawCompare() {
 	_, height := a.screen.Size()
+	t := a.t
 	if len(a.results) == 0 {
-		a.put(leftX, tableY, 79, styleDim, "no test has finished yet: run some tests, then compare them here")
+		a.put(leftX, tableY, 79, styleDim, t.noResults)
 		return
 	}
-	a.put(leftX, tableY, 79, styleTitle, tableHeader)
+	a.put(leftX, tableY, 79, styleTitle, t.tableHeader)
 
 	detailY := height - 2 - detailLines
 	legendY := detailY - 1
@@ -69,17 +68,17 @@ func (a *App) drawCompare() {
 		if i == a.cmpSel {
 			style = style.Reverse(true)
 		}
-		a.put(leftX, tableY+1+i-a.cmpTop, 79, style, compareRow(i+1, res))
+		a.put(leftX, tableY+1+i-a.cmpTop, 79, style, compareRow(i+1, res, t))
 	}
-	a.put(leftX, legendY, 79, styleDim,
-		"time: whole test  RAM/swap: peak MiB  * = limits asked but NOT applied")
+	a.put(leftX, legendY, 79, styleDim, t.legend)
 
 	res := a.results[a.cmpSel]
-	a.drawResult(detailY, fmt.Sprintf("TEST %d: %s", a.cmpSel+1, describe(res.Config)), res)
+	a.drawResult(detailY, fmt.Sprintf(t.testF, a.cmpSel+1, a.describe(res.Config)), res)
 	// drawResult already says whether the limits were applied; when some
 	// were asked for, this line lists each one.
 	if y := detailY + detailLines - 1; y < height-2 && len(res.Limits) > 0 {
-		a.put(leftX, y, 79, limitsStyle(res.Limits), limitsDetail(res.Limits))
+		_, style := a.limitsSummary(res.Limits)
+		a.put(leftX, y, 79, style, a.limitsDetail(res))
 	}
 }
 
@@ -94,8 +93,8 @@ func scrollTop(top, sel, rows int) int {
 	return top
 }
 
-// compareRow is one line of the table.
-func compareRow(n int, res runner.Result) string {
+// compareRow is one line of the table, with the result word of t.
+func compareRow(n int, res runner.Result, t *text) string {
 	c := res.Config
 	threadType := "gor"
 	if c.Mode == workload.OSThreads {
@@ -110,7 +109,7 @@ func compareRow(n int, res runner.Result) string {
 		lost = fmt.Sprintf("%.1f%%", percent(res.Work.Lost(), res.Work.Done))
 	}
 	return fmt.Sprintf(rowFormat, n, c.Threads, threadType, syncMode, c.MemoryMiB, c.WorkMillions,
-		limitsShort(c.Limits), outcomeShort(res), shortDuration(res.Duration),
+		limitsShort(c.Limits), outcomeShort(res, t), shortDuration(res.Duration),
 		res.PeakResidentBytes>>20, peakSwap(res)>>20, shortCount(res.MajorFaults), lost)
 }
 
@@ -135,16 +134,8 @@ func limitsShort(l cgroup.Limits) string {
 
 // outcomeShort is the outcome in one word, with * when the test asked for
 // limits that were not applied: it was not really limited.
-func outcomeShort(res runner.Result) string {
-	words := map[runner.Outcome]string{
-		runner.OutcomeCompleted: "ok",
-		runner.OutcomeStopped:   "stopped",
-		runner.OutcomeTimeout:   "timeout",
-		runner.OutcomeOOM:       "OOM",
-		runner.OutcomeKilled:    "killed",
-		runner.OutcomeFailed:    "failed",
-	}
-	word := words[res.Outcome]
+func outcomeShort(res runner.Result, t *text) string {
+	word := t.outcomesShort[res.Outcome]
 	for _, l := range res.Limits {
 		if !l.Applied {
 			return word + "*"
@@ -173,18 +164,14 @@ func shortCount(n uint64) string {
 	return fmt.Sprintf("%dk", n/1000)
 }
 
-// limitsDetail lists every requested limit and whether it was applied.
-func limitsDetail(limits []cgroup.LimitResult) string {
+// limitsDetail lists every requested limit of a test and whether it was
+// applied.
+func (a *App) limitsDetail(res runner.Result) string {
 	var parts []string
-	for _, l := range limits {
-		parts = append(parts, limitText(l.Name, l.Requested, l.Applied))
+	for _, l := range res.Limits {
+		parts = append(parts, a.limitText(l, res.Config.Limits))
 	}
-	return "limits: " + strings.Join(parts, ", ")
-}
-
-func limitsStyle(limits []cgroup.LimitResult) tcell.Style {
-	_, style := limitsSummary(limits)
-	return style
+	return a.t.limitsTo + strings.Join(parts, ", ")
 }
 
 // compareKey handles a key in the compare view.
@@ -223,6 +210,8 @@ func (a *App) compareKey(ev *tcell.EventKey) {
 			a.cmpSel = max(min(a.cmpSel+1, last), 0)
 		case 'r':
 			a.repeatSelected()
+		case 'l':
+			a.toggleLang()
 		}
 	}
 }
@@ -231,11 +220,11 @@ func (a *App) compareKey(ev *tcell.EventKey) {
 // form takes it too, so it can be changed and run once more.
 func (a *App) repeatSelected() {
 	if len(a.results) == 0 {
-		a.setError("no test has finished yet")
+		a.setError(a.t.noFinished)
 		return
 	}
 	if a.run != nil {
-		a.setError("a test is already running")
+		a.setError(a.t.alreadyRunning)
 		return
 	}
 	a.cfg = a.results[a.cmpSel].Config

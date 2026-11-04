@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -44,31 +45,37 @@ const (
 func (a *App) draw() {
 	a.screen.Clear()
 	width, height := a.screen.Size()
+	t := a.t
 	if width < minWidth || height < minHeight {
 		// Drawing the screens cut would hide values and mix columns.
-		a.put(0, 0, width, styleBad, "terminal too small")
-		a.put(0, 1, width, styleNormal, fmt.Sprintf("%dx%d, needs %dx%d", width, height, minWidth, minHeight))
-		a.put(0, 2, width, styleDim, "q quits")
+		a.put(0, 0, width, styleBad, t.tooSmall)
+		a.put(0, 1, width, styleNormal, fmt.Sprintf(t.tooSmallF, width, height, minWidth, minHeight))
+		a.put(0, 2, width, styleDim, t.quitHint)
 		a.screen.Show()
 		return
 	}
 
-	a.put(0, 0, width, styleBar, " concurrency-memory-lab  -  threads, CPU limits, virtual memory and swap")
+	a.put(0, 0, width, styleBar, t.title)
 	if a.limitsErr == nil {
-		a.put(1, 1, width-1, styleOK, "limits: available (root, cgroup v2)")
+		a.put(1, 1, width-1, styleOK, t.limitsOK)
 	} else {
-		a.put(1, 1, width-1, styleBad, "limits NOT available: "+a.limitsErr.Error()+" - tests run without limits")
+		reason := a.limitsErr.Error()
+		if errors.Is(a.limitsErr, errNotRoot) {
+			reason = t.notRoot
+		}
+		a.put(1, 1, width-1, styleBad, fmt.Sprintf(t.limitsNotF, reason))
 	}
+	a.put(width-1-len([]rune(t.switchLang)), 2, len([]rune(t.switchLang)), styleDim, t.switchLang)
 
-	keys := " arrows move/change  Enter type  s start  x stop  r repeat  c compare  q quit"
+	keys := t.keysMain
 	if a.view == viewCompare {
 		a.drawCompare()
-		keys = " up/down select  r repeat selected  s start  x stop  c/Esc back  q quit"
+		keys = t.keysCompare
 	} else {
 		a.drawForm()
 		a.drawLive()
 		if n := len(a.results); n > 0 {
-			a.drawResult(resultY, fmt.Sprintf("LAST RESULT  test %d: %s", n, describe(a.results[n-1].Config)), a.results[n-1])
+			a.drawResult(resultY, fmt.Sprintf(t.lastResultF, n, a.describe(a.results[n-1].Config)), a.results[n-1])
 		}
 	}
 
@@ -84,7 +91,7 @@ func (a *App) draw() {
 }
 
 func (a *App) drawForm() {
-	a.put(leftX, formY, leftW, styleTitle, "CONFIGURATION")
+	a.put(leftX, formY, leftW, styleTitle, a.t.configuration)
 	for i, f := range a.fields {
 		style := styleNormal
 		if a.run != nil {
@@ -103,44 +110,46 @@ func (a *App) drawForm() {
 }
 
 func (a *App) drawLive() {
+	t := a.t
 	y := formY
-	a.put(rightX, y, rightW, styleTitle, "LIVE")
+	a.put(rightX, y, rightW, styleTitle, t.live)
 	y++
 	if a.run == nil {
-		a.put(rightX, y, rightW, styleDim, "idle - press s to start a test")
+		a.put(rightX, y, rightW, styleDim, t.idle)
 		if a.system.MemTotalBytes != 0 {
 			ram, swap := runner.SafeMemory(a.system)
-			a.put(rightX, y+1, rightW, styleDim, fmt.Sprintf("safe now: %d MiB RAM, %d MiB swap", ram>>20, swap>>20))
+			a.put(rightX, y+1, rightW, styleDim, fmt.Sprintf(t.safeF, ram>>20, swap>>20))
 		}
 		return
 	}
-	a.put(rightX, y, rightW, styleWarn, fmt.Sprintf("running %.1fs  worker pid %d", a.sample.Elapsed.Seconds(), a.run.Pid()))
+	a.put(rightX, y, rightW, styleWarn, fmt.Sprintf(t.runningF, a.sample.Elapsed.Seconds(), a.run.Pid()))
 	y++
 	if !a.hasSample {
 		return
 	}
 	p := a.sample.Process
 	lines := []string{
-		row("Virtual memory", mib(p.VirtualBytes)),
-		row("Resident (RAM)", mib(p.ResidentBytes)),
-		row("Swap", a.swapText(p.SwapBytes)),
-		row("Page faults", fmt.Sprintf("%d min %d maj", p.MinorFaults, p.MajorFaults)),
-		row("Threads", fmt.Sprintf("%-6d CPU time %v", p.Threads, p.CPUTime.Round(10*time.Millisecond))),
+		row(t.virtual, mib(p.VirtualBytes)),
+		row(t.resident, mib(p.ResidentBytes)),
+		row(t.swap, a.swapText(p.SwapBytes)),
+		row(t.faults, fmt.Sprintf(t.faultsF, p.MinorFaults, p.MajorFaults)),
+		row(t.threads, fmt.Sprintf(t.threadsF, p.Threads, p.CPUTime.Round(10*time.Millisecond))),
 	}
 	if a.sample.HasCgroup {
 		c := a.sample.Cgroup
 		lines = append(lines,
-			row("Cgroup memory", mib(c.MemoryBytes)),
-			row("CPU throttled", fmt.Sprintf("%d of %d periods", c.ThrottledPeriods, c.Periods)))
+			row(t.cgroupMemory, mib(c.MemoryBytes)),
+			row(t.throttled, fmt.Sprintf(t.throttledF, c.ThrottledPeriods, c.Periods)))
 	} else {
-		lines = append(lines, row("Cgroup", "none"))
+		lines = append(lines, row(t.cgroup, t.none))
 	}
 	for _, l := range lines {
 		a.put(rightX, y, rightW, styleNormal, l)
 		y++
 	}
+	cfg := a.run.Config()
 	for _, l := range a.run.Limits() {
-		a.put(rightX, y, rightW, limitStyle(l.Applied), limitText(l.Name, l.Requested, l.Applied))
+		a.put(rightX, y, rightW, limitStyle(l.Applied), a.limitText(l, cfg.Limits))
 		y++
 	}
 }
@@ -149,6 +158,7 @@ func (a *App) drawLive() {
 // how it ended, its CPU phase, memory and CPU use. It stops before the
 // message line.
 func (a *App) drawResult(y int, title string, res runner.Result) {
+	t := a.t
 	_, height := a.screen.Size()
 	if y >= height-2 {
 		return
@@ -162,35 +172,36 @@ func (a *App) drawResult(y int, title string, res runner.Result) {
 	if res.Outcome != runner.OutcomeCompleted {
 		outcomeStyle = styleWarn
 	}
-	a.put(leftX, y, 79, outcomeStyle, fmt.Sprintf("%s  (%v)", res.Outcome, res.Duration.Round(time.Millisecond)))
+	a.put(leftX, y, 79, outcomeStyle, fmt.Sprintf("%s  (%v)", t.outcomes[res.Outcome], res.Duration.Round(time.Millisecond)))
 	y++
 	if y >= height-2 {
 		return
 	}
-	work, workStyle := workText(res.Work)
+	work, workStyle := a.workText(res.Work)
 	a.put(leftX, y, 79, workStyle, work)
 	y++
 
 	if y >= height-2 {
 		return
 	}
-	a.put(leftX, y, 79, styleNormal, fmt.Sprintf("peak RAM %s  peak swap %s  faults %d minor %d major",
+	a.put(leftX, y, 79, styleNormal, fmt.Sprintf(t.peakF,
 		mib(res.PeakResidentBytes), a.swapText(peakSwap(res)), res.MinorFaults, res.MajorFaults))
 	y++
 
 	if y >= height-2 {
 		return
 	}
-	text := fmt.Sprintf("cpu %v user %v sys  ", res.UserTime.Round(time.Millisecond), res.SystemTime.Round(time.Millisecond))
+	text := fmt.Sprintf(t.cpuF, res.UserTime.Seconds(), res.SystemTime.Seconds())
 	if res.HasCgroup {
 		c := res.Cgroup
-		text += fmt.Sprintf("throttled %d of %d  oom kills %d  ", c.ThrottledPeriods, c.Periods, c.OOMKills)
+		text += fmt.Sprintf(t.cgroupF, c.ThrottledPeriods, c.Periods, c.OOMKills)
 	} else {
-		text += "no cgroup  "
+		text += t.noCgroup
 	}
-	limitsText, style := limitsSummary(res.Limits)
-	a.put(leftX, y, len(text), styleNormal, text)
-	a.put(leftX+len(text), y, 79-len(text), style, limitsText)
+	limitsText, style := a.limitsSummary(res.Limits)
+	n := len([]rune(text))
+	a.put(leftX, y, n, styleNormal, text)
+	a.put(leftX+n, y, 79-n, style, limitsText)
 }
 
 // peakSwap is the highest swap use of a test: the cgroup counts it exactly,
@@ -204,16 +215,15 @@ func peakSwap(res runner.Result) uint64 {
 
 // workText describes the CPU phase of a result. A shared counter that lost
 // updates is shown in red: that is the race condition.
-func workText(w runner.Work) (string, tcell.Style) {
+func (a *App) workText(w runner.Work) (string, tcell.Style) {
 	switch {
 	case !w.Reported:
-		return "work: not finished", styleDim
+		return a.t.workUnfinished, styleDim
 	case !w.Shared:
-		return fmt.Sprintf("work: %d iterations in %v", w.Done, w.Elapsed), styleNormal
+		return fmt.Sprintf(a.t.workF, w.Done, w.Elapsed), styleNormal
 	}
 	lost := w.Lost()
-	text := fmt.Sprintf("shared counter: %d of %d increments, lost %d (%.1f%%) in %v",
-		w.Counter, w.Done, lost, percent(lost, w.Done), w.Elapsed)
+	text := fmt.Sprintf(a.t.counterF, w.Counter, w.Done, lost, percent(lost, w.Done), w.Elapsed)
 	if lost > 0 {
 		return text, styleBad
 	}
@@ -228,27 +238,28 @@ func percent(part, whole int64) float64 {
 }
 
 // limitsSummary says in a few words whether the test was really limited.
-func limitsSummary(limits []cgroup.LimitResult) (string, tcell.Style) {
+func (a *App) limitsSummary(limits []cgroup.LimitResult) (string, tcell.Style) {
 	if len(limits) == 0 {
-		return "limits: none requested", styleNormal
+		return a.t.limitsNone, styleNormal
 	}
 	for _, l := range limits {
 		if !l.Applied {
-			return "limits: NOT applied", styleBad
+			return a.t.limitsNotAll, styleBad
 		}
 	}
-	return "limits: all applied", styleOK
+	return a.t.limitsAll, styleOK
 }
 
 // swapText shows swap, or says the machine has none.
 func (a *App) swapText(b uint64) string {
 	if a.system.MemTotalBytes != 0 && a.system.SwapTotalBytes == 0 {
-		return "no swap on this machine"
+		return a.t.noSwapMachine
 	}
 	return mib(b)
 }
 
-// put writes text at (x, y), cut or padded to width cells.
+// put writes text at (x, y), cut or padded to width cells. It counts runes,
+// not bytes, so letters like á or ñ take one cell.
 func (a *App) put(x, y, width int, style tcell.Style, text string) {
 	sw, sh := a.screen.Size()
 	if y < 0 || y >= sh {
@@ -268,15 +279,29 @@ func (a *App) put(x, y, width int, style tcell.Style, text string) {
 	}
 }
 
+// row is one line of the live panel: a label and its value.
 func row(label, value string) string {
 	return fmt.Sprintf("%-15s %s", label, value)
 }
 
-func limitText(name, requested string, applied bool) string {
-	if applied {
-		return name + " " + requested + ": applied"
+// limitText says whether one limit was applied, for example
+// "memory 128 MiB: applied". The requested value is written again from the
+// configuration, in the language of the screen.
+func (a *App) limitText(l cgroup.LimitResult, want cgroup.Limits) string {
+	var value string
+	switch l.Name {
+	case "cpu":
+		value = fmt.Sprintf(a.t.cpuLimitF, want.CPUPercent)
+	case "memory":
+		value = fmt.Sprintf("%d MiB", want.MemoryBytes>>20)
+	case "swap":
+		value = fmt.Sprintf("%d MiB", want.SwapBytes>>20)
 	}
-	return name + " " + requested + ": NOT applied"
+	status := a.t.applied
+	if !l.Applied {
+		status = a.t.notApplied
+	}
+	return a.t.limitNames[l.Name] + " " + value + ": " + status
 }
 
 func limitStyle(applied bool) tcell.Style {
@@ -287,10 +312,10 @@ func limitStyle(applied bool) tcell.Style {
 }
 
 // describe summarizes a configuration in one line.
-func describe(c runner.Config) string {
+func (a *App) describe(c runner.Config) string {
 	s := fmt.Sprintf("%d %s, %d MiB, %d M", c.Threads, c.Mode, c.MemoryMiB, c.WorkMillions)
 	if c.Sync != "" && c.Sync != workload.SyncOff {
-		s += ", counter " + string(c.Sync)
+		s += ", " + a.t.counterWord + " " + string(c.Sync)
 	}
 	return s
 }

@@ -22,7 +22,7 @@ func newTestApp(t *testing.T, width, height int) (*App, tcell.SimulationScreen) 
 	}
 	t.Cleanup(screen.Fini)
 	screen.SetSize(width, height)
-	a := newApp(screen, "/nonexistent")
+	a := newApp(screen, "/nonexistent", English)
 	a.start = func(runner.Config) (*runner.Run, error) { return nil, errors.New("not in tests") }
 	return a, screen
 }
@@ -283,14 +283,15 @@ func TestQuitWhenIdle(t *testing.T) {
 }
 
 func TestWorkText(t *testing.T) {
-	if s, _ := workText(runner.Work{}); s != "work: not finished" {
+	a, _ := newTestApp(t, 80, 24)
+	if s, _ := a.workText(runner.Work{}); s != "work: not finished" {
 		t.Errorf("workText of an unreported phase = %q", s)
 	}
-	_, style := workText(runner.Work{Reported: true, Shared: true, Done: 10, Counter: 10})
+	_, style := a.workText(runner.Work{Reported: true, Shared: true, Done: 10, Counter: 10})
 	if style != styleOK {
 		t.Error("an exact shared counter is not shown as OK")
 	}
-	_, style = workText(runner.Work{Reported: true, Shared: true, Done: 10, Counter: 7})
+	_, style = a.workText(runner.Work{Reported: true, Shared: true, Done: 10, Counter: 7})
 	if style != styleBad {
 		t.Error("a shared counter that lost updates is not shown in red")
 	}

@@ -2,12 +2,15 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/gdamore/tcell/v2"
 
 	"concurrency-memory-lab/cgroup"
 )
 
+// errNotRoot means limits cannot be applied because the program is not
+// root. The screen shows it with the text of its language (t.notRoot).
 var errNotRoot = errors.New("not root, start it with sudo")
 
 // limitsNone is the configuration with no limit at all.
@@ -67,13 +70,15 @@ func (a *App) commandKey(ev *tcell.EventKey) {
 		a.repeatTest()
 	case 'c':
 		a.openCompare()
+	case 'l':
+		a.toggleLang()
 	case 'k':
 		a.sel = (a.sel + len(a.fields) - 1) % len(a.fields)
 	case 'j':
 		a.sel = (a.sel + 1) % len(a.fields)
 	case 'd':
 		a.cfg = defaultConfig()
-		a.setMessage("default configuration")
+		a.setMessage(a.t.defaults)
 	}
 }
 
@@ -81,7 +86,7 @@ func (a *App) commandKey(ev *tcell.EventKey) {
 // cannot change, so the form is locked meanwhile.
 func (a *App) change(d int64) {
 	if a.run != nil {
-		a.setError("stop the test to change the configuration")
+		a.setError(a.t.locked)
 		return
 	}
 	a.fields[a.sel].adjust(&a.cfg, d)
@@ -90,7 +95,7 @@ func (a *App) change(d int64) {
 
 func (a *App) beginEdit() {
 	if a.run != nil {
-		a.setError("stop the test to change the configuration")
+		a.setError(a.t.locked)
 		return
 	}
 	if a.fields[a.sel].choice {
@@ -98,7 +103,7 @@ func (a *App) beginEdit() {
 		return
 	}
 	a.editing, a.edit = true, ""
-	a.setMessage("type a number, Enter to accept, Esc to cancel")
+	a.setMessage(a.t.typeHint)
 }
 
 // editKey handles a key while the user types a value.
@@ -107,15 +112,15 @@ func (a *App) editKey(ev *tcell.EventKey) {
 	switch ev.Key() {
 	case tcell.KeyEscape:
 		a.editing = false
-		a.setMessage("edit cancelled")
+		a.setMessage(a.t.editCancelled)
 	case tcell.KeyEnter:
 		a.editing = false
 		if a.edit == "" {
-			a.setMessage("edit cancelled")
-		} else if err := f.setText(&a.cfg, a.edit); err != nil {
+			a.setMessage(a.t.editCancelled)
+		} else if err := f.setText(&a.cfg, a.edit, a.t); err != nil {
 			a.setError(err.Error())
 		} else {
-			a.setMessage(f.label + " set to " + f.format(f.get(&a.cfg)))
+			a.setMessage(fmt.Sprintf(a.t.setToF, f.label, f.format(f.get(&a.cfg))))
 		}
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		if a.edit != "" {

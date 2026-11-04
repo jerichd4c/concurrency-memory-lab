@@ -142,6 +142,9 @@ func (r *Run) limitsInForce() (memLimit, swapLimit int64) {
 	return memLimit, swapLimit
 }
 
+// Config returns the configuration of the run.
+func (r *Run) Config() Config { return r.cfg }
+
 // Pid returns the process ID of the worker.
 func (r *Run) Pid() int { return r.cmd.Process.Pid }
 

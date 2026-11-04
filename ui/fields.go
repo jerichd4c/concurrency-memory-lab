@@ -42,14 +42,14 @@ func (f field) adjust(c *runner.Config, d int64) {
 	f.set(c, clamp(v, f.min, f.max))
 }
 
-// setText sets the value typed by the user.
-func (f field) setText(c *runner.Config, text string) error {
-	v, err := strconv.ParseInt(text, 10, 64)
+// setText sets the value typed by the user. t gives the error messages.
+func (f field) setText(c *runner.Config, typed string, t *text) error {
+	v, err := strconv.ParseInt(typed, 10, 64)
 	if err != nil {
-		return fmt.Errorf("%q is not a number", text)
+		return fmt.Errorf(t.notNumberF, typed)
 	}
 	if v < f.min || v > f.max {
-		return fmt.Errorf("%s must be between %d and %d", f.label, f.min, f.max)
+		return fmt.Errorf(t.betweenF, f.label, f.min, f.max)
 	}
 	f.set(c, v)
 	return nil
@@ -72,18 +72,18 @@ func defaultConfig() runner.Config {
 	}
 }
 
-func newFields() []field {
+// newFields builds the form with the labels and help texts of t. The order
+// is the order of t.labels and t.helps.
+func newFields(t *text) []field {
 	cpus := int64(runtime.NumCPU())
-	return []field{
+	fields := []field{
 		{
-			label: "Threads", help: "workers that share the CPU work",
-			min: 1, max: 1024, step: 1,
+			min: 1, max: runner.MaxThreads, step: 1,
 			get:    func(c *runner.Config) int64 { return int64(c.Threads) },
 			set:    func(c *runner.Config, v int64) { c.Threads = int(v) },
 			format: func(v int64) string { return strconv.FormatInt(v, 10) },
 		},
 		{
-			label: "Worker type", help: "goroutine: tasks of the Go runtime (M:N)  os-thread: one OS thread each (1:1)",
 			min: 0, max: 1, step: 1, choice: true,
 			get: func(c *runner.Config) int64 {
 				if c.Mode == workload.OSThreads {
@@ -105,21 +105,18 @@ func newFields() []field {
 			},
 		},
 		{
-			label: "Memory to use", help: "MiB the worker reserves with mmap and then touches page by page",
 			min: 0, max: 1 << 16, step: 64,
 			get:    func(c *runner.Config) int64 { return int64(c.MemoryMiB) },
 			set:    func(c *runner.Config, v int64) { c.MemoryMiB = int(v) },
-			format: noneOr("%d MiB"),
+			format: noneOr(t.none, "%d MiB"),
 		},
 		{
-			label: "CPU work", help: "millions of iterations (or of counter increments), split among the threads",
 			min: 0, max: 1_000_000, step: 500,
 			get:    func(c *runner.Config) int64 { return c.WorkMillions },
 			set:    func(c *runner.Config, v int64) { c.WorkMillions = v },
-			format: noneOr("%d M"),
+			format: noneOr(t.none, "%d M"),
 		},
 		{
-			label: "Shared counter", help: "off: independent work  none/mutex/atomic: all threads add 1 to one counter",
 			min: 0, max: int64(len(syncModes) - 1), step: 1, choice: true,
 			get: func(c *runner.Config) int64 {
 				for i, m := range syncModes {
@@ -130,24 +127,21 @@ func newFields() []field {
 				return 0 // "" is off
 			},
 			set:    func(c *runner.Config, v int64) { c.Sync = syncModes[v] },
-			format: func(v int64) string { return syncLabels[v] },
+			format: func(v int64) string { return t.syncLabels[v] },
 		},
 		{
-			label: "CPU limit", help: "percent of ONE CPU the test may use (cpu.max); 200 = two CPUs; none = no limit",
 			min: 0, max: 100 * cpus, step: 25,
 			get:    func(c *runner.Config) int64 { return int64(c.Limits.CPUPercent) },
 			set:    func(c *runner.Config, v int64) { c.Limits.CPUPercent = int(v) },
-			format: noneOr("%d %%"),
+			format: noneOr(t.none, "%d %%"),
 		},
 		{
-			label: "Memory limit", help: "most RAM the test may use (memory.max), in MiB; none = no limit",
 			min: 0, max: 1 << 16, step: 64,
 			get:    func(c *runner.Config) int64 { return c.Limits.MemoryBytes >> 20 },
 			set:    func(c *runner.Config, v int64) { c.Limits.MemoryBytes = v << 20 },
-			format: noneOr("%d MiB"),
+			format: noneOr(t.none, "%d MiB"),
 		},
 		{
-			label: "Swap limit", help: "most swap the test may use (memory.swap.max), in MiB; -1 = none, 0 = no swap",
 			min: -1, max: 1 << 16, step: 64,
 			get: func(c *runner.Config) int64 {
 				if c.Limits.SwapBytes < 0 {
@@ -164,34 +158,34 @@ func newFields() []field {
 			format: func(v int64) string {
 				switch {
 				case v < 0:
-					return "none"
+					return t.none
 				case v == 0:
-					return "0 (no swap)"
+					return t.noSwap
 				}
 				return fmt.Sprintf("%d MiB", v)
 			},
 		},
 		{
-			label: "Time limit", help: "seconds before the test is stopped; none = never",
 			min: 0, max: 3600, step: 10,
 			get:    func(c *runner.Config) int64 { return int64(c.Timeout / time.Second) },
 			set:    func(c *runner.Config, v int64) { c.Timeout = time.Duration(v) * time.Second },
-			format: noneOr("%d s"),
+			format: noneOr(t.none, "%d s"),
 		},
 	}
+	for i := range fields {
+		fields[i].label, fields[i].help = t.labels[i], t.helps[i]
+	}
+	return fields
 }
 
-// The options of the "Shared counter" field, in order.
-var (
-	syncModes  = []workload.SyncMode{workload.SyncOff, workload.SyncNone, workload.SyncMutex, workload.SyncAtomic}
-	syncLabels = []string{"off", "no sync", "mutex", "atomic"}
-)
+// The options of the "Shared counter" field, in the order of t.syncLabels.
+var syncModes = []workload.SyncMode{workload.SyncOff, workload.SyncNone, workload.SyncMutex, workload.SyncAtomic}
 
-// noneOr formats 0 as "none" and anything else with format.
-func noneOr(format string) func(int64) string {
+// noneOr formats 0 as none and anything else with format.
+func noneOr(none, format string) func(int64) string {
 	return func(v int64) string {
 		if v == 0 {
-			return "none"
+			return none
 		}
 		return fmt.Sprintf(format, v)
 	}
